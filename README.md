@@ -15,7 +15,7 @@ This extension allows you to automatically upload images generated in the Stable
     Navigate to the `extensions` directory of your Stable Diffusion WebUI Forge installation and clone this repository.
     ```bash
     cd extensions
-    git clone https://your-repository-url/sd-webui-s3-uploader.git
+    git clone https://github.com/djnixy/sd-upload-s3.git
     ```
     *(Note: Replace `your-repository-url/sd-webui-s3-uploader.git` with the actual repository URL.)*
 
