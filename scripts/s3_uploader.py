@@ -22,6 +22,17 @@ def add_s3_settings():
     shared.opts.add_option("s3_uploader_use_ssl", shared.OptionInfo(True, "Use SSL (Env: S3_UPLOADER_USE_SSL)", gr.Checkbox, section=section))
     shared.opts.add_option("s3_uploader_path_style", shared.OptionInfo(False, "Use Path Style Addressing (Env: S3_UPLOADER_PATH_STYLE)", gr.Checkbox, section=section))
 
+    # Add a button to test the connection
+    with gr.Row(elem_id="s3_uploader_test_connection"):
+        test_button = gr.Button("Test S3 Connection", variant="secondary")
+        test_output = gr.Textbox(label="Test Result", interactive=False)
+
+    test_button.click(
+        fn=test_connection,
+        inputs=[],
+        outputs=[test_output],
+    )
+
 on_ui_settings(add_s3_settings)
 
 def get_config_value(env_var, ui_value, default=None, value_type=str):
@@ -32,6 +43,39 @@ def get_config_value(env_var, ui_value, default=None, value_type=str):
             return env_value.lower() in ('true', '1', 'yes', 'on')
         return value_type(env_value)
     return ui_value if ui_value is not None else default
+
+def verify_s3_configuration():
+    # Check for required environment variables
+    missing_vars = []
+    if not get_config_value("S3_UPLOADER_ENDPOINT_URL", shared.opts.s3_uploader_endpoint_url):
+        missing_vars.append("S3_UPLOADER_ENDPOINT_URL")
+    if not get_config_value("S3_UPLOADER_ACCESS_KEY_ID", shared.opts.s3_uploader_access_key_id):
+        missing_vars.append("S3_UPLOADER_ACCESS_KEY_ID")
+    if not get_config_value("S3_UPLOADER_SECRET_ACCESS_KEY", shared.opts.s3_uploader_secret_access_key):
+        missing_vars.append("S3_UPLOADER_SECRET_ACCESS_KEY")
+    if not get_config_value("S3_UPLOADER_BUCKET_NAME", shared.opts.s3_uploader_bucket_name):
+        missing_vars.append("S3_UPLOADER_BUCKET_NAME")
+
+    if missing_vars:
+        return f"Missing required S3 configuration: {', '.join(missing_vars)}"
+
+    # Test the S3 connection
+    try:
+        s3_client = get_s3_client()
+        if not s3_client:
+            return "Failed to create S3 client. Check your credentials and endpoint URL."
+
+        # Check if the bucket exists
+        s3_client.head_bucket(Bucket=get_config_value("S3_UPLOADER_BUCKET_NAME", shared.opts.s3_uploader_bucket_name))
+
+        return "S3 configuration verified successfully."
+    except ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return "S3 bucket not found. Please check the bucket name."
+        else:
+            return f"S3 connection failed: {e}"
+    except Exception as e:
+        return f"An unexpected error occurred: {e}"
 
 def get_s3_client():
     # Check environment variables first, fall back to UI settings
@@ -102,35 +146,13 @@ def on_image_saved_callback(params: ImageSaveParams):
 
 on_image_saved(on_image_saved_callback)
 
-class S3UploaderScript(scripts.Script):
-    def title(self):
-        return "S3 Uploader"
+def test_connection():
+    return verify_s3_configuration()
 
-    def show(self, is_img2img):
-        return scripts.AlwaysVisible
+# Verify S3 configuration at startup
+startup_verification_result = verify_s3_configuration()
+if "successfully" not in startup_verification_result:
+    logger.warning(f"S3 Uploader: {startup_verification_result}")
+else:
+    logger.info(f"S3 Uploader: {startup_verification_result}")
 
-    def ui(self, is_img2img):
-        with gr.Accordion("S3 Uploader", open=False):
-            with gr.Row():
-                test_btn = gr.Button("Test S3 Connection", variant="secondary")
-                test_output = gr.Textbox(label="Test Result", interactive=False)
-            
-            def test_connection():
-                client = get_s3_client()
-                if not client:
-                    return "Error: Could not initialize client. Check Settings (Endpoint, Keys)."
-                
-                bucket_name = get_config_value("S3_UPLOADER_BUCKET_NAME", getattr(shared.opts, "s3_uploader_bucket_name", ""))
-                if not bucket_name:
-                    return "Error: Bucket name not configured."
-                
-                try:
-                    # Try to list objects (limited to 1) to verify connection and bucket access
-                    client.list_objects_v2(Bucket=bucket_name, MaxKeys=1)
-                    return f"Success! Connected to {bucket_name}."
-                except Exception as e:
-                    return f"Connection Failed: {str(e)}"
-
-            test_btn.click(fn=test_connection, outputs=[test_output])
-            
-        return [test_btn, test_output]
