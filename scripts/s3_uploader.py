@@ -22,18 +22,14 @@ def add_s3_settings():
     shared.opts.add_option("s3_uploader_use_ssl", shared.OptionInfo(True, "Use SSL (Env: S3_UPLOADER_USE_SSL)", gr.Checkbox, section=section))
     shared.opts.add_option("s3_uploader_path_style", shared.OptionInfo(False, "Use Path Style Addressing (Env: S3_UPLOADER_PATH_STYLE)", gr.Checkbox, section=section))
 
-    # Add a button to test the connection
-    with gr.Row(elem_id="s3_uploader_test_connection"):
-        test_button = gr.Button("Test S3 Connection", variant="secondary")
-        test_output = gr.Textbox(label="Test Result", interactive=False)
-
-    test_button.click(
-        fn=test_connection,
-        inputs=[],
-        outputs=[test_output],
-    )
 
 on_ui_settings(add_s3_settings)
+
+
+def test_connection():
+    """Provides a gradio-compatible function to test S3 configuration."""
+    return verify_s3_configuration()
+
 
 def get_config_value(env_var, ui_value, default=None, value_type=str):
     """Get configuration value from environment variable or UI setting."""
@@ -146,8 +142,26 @@ def on_image_saved_callback(params: ImageSaveParams):
 
 on_image_saved(on_image_saved_callback)
 
-def test_connection():
-    return verify_s3_configuration()
+
+class S3UploaderScript(scripts.Script):
+    def title(self):
+        return "S3 Connection Tester"
+
+    def show(self, is_img2img):
+        return scripts.AlwaysVisible
+
+    def ui(self, is_img2img):
+        with gr.Blocks():
+            test_button = gr.Button("Test S3 Connection", variant="secondary")
+            test_output = gr.Textbox(label="Test Result", interactive=False)
+
+            test_button.click(
+                fn=test_connection,
+                inputs=[],
+                outputs=[test_output],
+            )
+        return None
+
 
 # Verify S3 configuration at startup
 startup_verification_result = verify_s3_configuration()
